@@ -1,0 +1,25 @@
+{
+  "page": 2,
+  "total_pages": 3,
+  "next_page": 3,
+  "announcements": [
+    {
+      "announcement_id": "R003",
+      "title": "召回公示：气泡水 包装密封性缺陷（已撤回）",
+      "published_at": "2026-11-06T08:00:00Z",
+      "withdrawn_at": "2026-11-11T03:00:00Z",
+      "withdraw_reason": "缺陷批次已另行公告覆盖，撤回原公告",
+      "detail_url": "/feed/announcements/R003",
+      "attachment_url": "/feed/attachments/R003_batches.csv",
+      "withdrawn": true
+    },
+    {
+      "announcement_id": "R004",
+      "title": "召回公示：黄桃罐头 添加剂超标",
+      "published_at": "2026-11-09T08:00:00Z",
+      "detail_url": "/feed/announcements/R004",
+      "attachment_url": "/feed/attachments/R004_batches.csv",
+      "withdrawn": false
+    }
+  ]
+}

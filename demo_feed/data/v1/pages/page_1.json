@@ -1,0 +1,23 @@
+{
+  "page": 1,
+  "total_pages": 2,
+  "next_page": 2,
+  "announcements": [
+    {
+      "announcement_id": "R001",
+      "title": "召回公示：某品牌巴氏杀菌乳 微生物超标",
+      "published_at": "2026-11-01T08:00:00Z",
+      "detail_url": "/feed/announcements/R001",
+      "attachment_url": "/feed/attachments/R001_batches.csv",
+      "withdrawn": false
+    },
+    {
+      "announcement_id": "R002",
+      "title": "召回公示：每日坚果 霉菌项目不合格",
+      "published_at": "2026-11-03T08:00:00Z",
+      "detail_url": "/feed/announcements/R002",
+      "attachment_url": "/feed/attachments/R002_batches.csv",
+      "withdrawn": false
+    }
+  ]
+}

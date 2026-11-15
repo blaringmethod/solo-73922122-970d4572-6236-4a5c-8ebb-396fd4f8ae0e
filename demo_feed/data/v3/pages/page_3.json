@@ -1,0 +1,15 @@
+{
+  "page": 3,
+  "total_pages": 3,
+  "next_page": null,
+  "announcements": [
+    {
+      "announcement_id": "R005",
+      "title": "召回公示：白桃气泡水 密封性补充召回",
+      "published_at": "2026-11-12T08:00:00Z",
+      "detail_url": "/feed/announcements/R005",
+      "attachment_url": "/feed/attachments/R005_batches.csv",
+      "withdrawn": false
+    }
+  ]
+}

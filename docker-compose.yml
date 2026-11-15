@@ -1,0 +1,39 @@
+services:
+  # 召回公示演示源：版本切换 / 撤回 / 附件故障 / 延时注入
+  feed:
+    build: .
+    command: uvicorn demo_feed.server:app --host 0.0.0.0 --port 8010
+    ports:
+      - "8010:8010"
+    volumes:
+      - ./demo_feed/data:/srv/demo_feed/data:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8010/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # 采集端：FastAPI + SQLite，网页在 8000
+  collector:
+    build: .
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    environment:
+      FEED_BASE_URL: http://feed:8010
+      COLLECTOR_DB: /data/collector.db
+      MANIFEST_PATH: /data/stop_sale_manifest.json
+      HTTP_TIMEOUT: "15"
+    ports:
+      - "8000:8000"
+    volumes:
+      - collector-data:/data
+    depends_on:
+      feed:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  collector-data:

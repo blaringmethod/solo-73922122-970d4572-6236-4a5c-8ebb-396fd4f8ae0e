@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>召回公示演示源 · 控制面板</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+           background: #f4f6f8; color: #1f2933; }
+    header { background: #0f4c81; color: #fff; padding: 18px 28px; }
+    header h1 { margin: 0; font-size: 20px; }
+    header p { margin: 6px 0 0; opacity: .85; font-size: 13px; }
+    main { max-width: 1080px; margin: 24px auto; padding: 0 20px; display: grid;
+           grid-template-columns: 1fr 1fr; gap: 18px; }
+    .card { background: #fff; border-radius: 10px; padding: 18px 20px;
+            box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+    .card.full { grid-column: 1 / -1; }
+    .card h2 { margin: 0 0 14px; font-size: 16px; color: #0f4c81; }
+    .badge { display: inline-block; padding: 2px 10px; border-radius: 999px;
+             font-size: 12px; font-weight: 600; }
+    .badge.ok { background: #e3f6ec; color: #147a3c; }
+    .badge.off { background: #fdeaea; color: #b3261e; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #eef1f4; }
+    th { color: #616e7c; font-weight: 600; }
+    button { border: 0; border-radius: 6px; padding: 7px 14px; font-size: 13px;
+             cursor: pointer; background: #0f4c81; color: #fff; }
+    button.secondary { background: #52606d; }
+    button.danger { background: #b3261e; }
+    button.ghost { background: #e4e7eb; color: #1f2933; }
+    button:disabled { opacity: .45; cursor: not-allowed; }
+    select, input { padding: 7px 10px; border: 1px solid #cbd2d9; border-radius: 6px;
+                    font-size: 13px; }
+    .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+    .muted { color: #7b8794; font-size: 12px; }
+    code { background: #f0f2f4; padding: 1px 6px; border-radius: 4px; font-size: 12px; }
+    #events li { font-size: 12px; color: #52606d; margin-bottom: 4px; }
+  </style>
+</head>
+<body>
+<header>
+  <h1>召回公示演示源 · 控制面板</h1>
+  <p>模拟召回公示站：切换目录版本、撤回公告、注入附件故障与响应延时。采集端在 8000 端口。</p>
+</header>
+<main>
+  <section class="card">
+    <h2>目录版本</h2>
+    <div class="row">
+      <label>当前版本：
+        <select id="version-select">
+          {% for v in versions %}<option value="{{ v }}">v{{ v }}</option>{% endfor %}
+        </select>
+      </label>
+      <button onclick="switchVersion()">切换版本</button>
+    </div>
+    <p class="muted" style="margin-top:10px">
+      每次切换会改变 <code>X-Directory-Version</code> 头；若采集翻页中途切换，采集端会中止并保留上轮清单。
+    </p>
+  </section>
+
+  <section class="card">
+    <h2>响应延时（模拟慢请求 / 中断）</h2>
+    <div class="row">
+      <label>延时秒数：<input id="delay-input" type="number" min="0" max="60" step="0.5" value="0" style="width:90px"></label>
+      <button onclick="setDelay()">应用</button>
+      <button class="ghost" onclick="document.getElementById('delay-input').value=0;setDelay()">清零</button>
+    </div>
+    <p class="muted" style="margin-top:10px">设为较大值后启动采集，再到采集端“取消本次采集”，可验证中断保护。</p>
+  </section>
+
+  <section class="card full">
+    <h2>当前版本公告（v{{ versions[0] }} 初始视图，运行时刷新）</h2>
+    <table>
+      <thead><tr><th>公告号</th><th>标题</th><th>状态</th><th>附件</th><th>操作</th></tr></thead>
+      <tbody id="ann-tbody"></tbody>
+    </table>
+  </section>
+
+  <section class="card full">
+    <h2>状态与操作审计</h2>
+    <div class="row" style="margin-bottom:10px">
+      <button class="danger" onclick="resetAll()">重置演示源</button>
+      <a href="/health" target="_blank"><button class="secondary" type="button">/health</button></a>
+      <a href="/feed?page=1" target="_blank"><button class="ghost" type="button">查看 /feed 原始 JSON</button></a>
+    </div>
+    <ul id="events" style="padding-left:18px;margin:0"></ul>
+  </section>
+</main>
+
+<script>
+async function api(path, body) {
+  const res = await fetch(path, {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(body || {})
+  });
+  if (!res.ok) { alert('操作失败：' + (await res.text())); throw new Error(res.status); }
+  return res.json();
+}
+
+async function switchVersion() {
+  const v = parseInt(document.getElementById('version-select').value, 10);
+  await api('/control/version', {version: v});
+  await refresh();
+}
+async function withdraw(id) {
+  const reason = prompt('撤回原因（可选）', '演示：企业申诉，暂停执行');
+  if (reason === null) return;
+  await api('/control/withdraw', {announcement_id: id, reason});
+  await refresh();
+}
+async function restore(id) {
+  await api('/control/restore', {announcement_id: id});
+  await refresh();
+}
+async function setFault(filename, mode) {
+  await api('/control/fault', {attachment: filename, mode});
+  await refresh();
+}
+async function setDelay() {
+  const seconds = parseFloat(document.getElementById('delay-input').value || '0');
+  await api('/control/delay', {seconds});
+  await refresh();
+}
+async function resetAll() {
+  if (!confirm('确定重置版本、撤回覆盖与故障注入？')) return;
+  await api('/control/reset', {});
+  document.getElementById('delay-input').value = 0;
+  await refresh();
+}
+
+function faultSelect(attachment, faults) {
+  const cur = faults[attachment] || 'none';
+  return `<select onchange="setFault('${attachment}', this.value)">
+      <option value="none" ${cur==='none'?'selected':''}>正常</option>
+      <option value="error" ${cur==='error'?'selected':''}>HTTP 500</option>
+      <option value="corrupt" ${cur==='corrupt'?'selected':''}>损坏字节</option>
+    </select>`;
+}
+
+async function refresh() {
+  const state = await (await fetch('/control/state')).json();
+  document.getElementById('version-select').value = state.version;
+  document.getElementById('delay-input').value = state.delay_seconds;
+  const tbody = document.getElementById('ann-tbody');
+  tbody.innerHTML = state.announcements.map(a => {
+    const attach = (a.attachment_url || '').split('/').pop();
+    const status = a.withdrawn
+      ? `<span class="badge off">已撤回</span><div class="muted">${a.withdraw_reason || ''}</div>`
+      : `<span class="badge ok">有效</span>`;
+    const action = a.withdrawn
+      ? `<button class="secondary" onclick="restore('${a.announcement_id}')">恢复</button>`
+      : `<button class="danger" onclick="withdraw('${a.announcement_id}')">撤回</button>`;
+    return `<tr>
+      <td><code>${a.announcement_id}</code></td>
+      <td>${a.title}</td>
+      <td>${status}</td>
+      <td><code>${attach}</code><div style="margin-top:4px">${faultSelect(attach, state.attachment_faults)}</div></td>
+      <td>${action}</td>
+    </tr>`;
+  }).join('');
+  document.getElementById('events').innerHTML = state.events
+    .map(e => `<li><code>${e.action}</code> — ${JSON.stringify(e.detail)}</li>`).join('')
+    || '<li class="muted">暂无操作记录</li>';
+}
+refresh();
+setInterval(refresh, 5000);
+</script>
+</body>
+</html>

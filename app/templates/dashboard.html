@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>召回采集端 · 操作面板</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<header>
+  <h1>食品安全召回采集端</h1>
+  <nav>
+    <a href="/">操作面板</a>
+    <a href="/manifest">当前拦截清单</a>
+    <a href="/stop-sale/manifest.json" target="_blank">停售 JSON</a>
+    <a href="{{ feed_base_url }}/" target="_blank">演示源控制台 ↗</a>
+  </nav>
+</header>
+<main>
+  <div class="grid">
+    <section class="card">
+      <h2>采集控制</h2>
+      <p class="muted">
+        一次采集会读全演示源<strong>同一目录版本</strong>的所有分页与有效公告附件，
+        全部成功后才整体替换清单；失败或中断时保留上轮清单。
+      </p>
+      <div class="toolbar">
+        <button id="btn-collect" onclick="startCollect()">发起采集</button>
+        <button id="btn-cancel" class="danger" onclick="cancelCollect()" disabled>取消本次采集</button>
+        <span id="run-hint" class="muted"></span>
+      </div>
+      <div id="action-msg"></div>
+    </section>
+
+    <section class="card">
+      <h2>当前已发布清单</h2>
+      <dl class="kv" id="meta-box">
+        <dt>发布状态</dt><dd><span class="muted">尚未采集</span></dd>
+      </dl>
+      <p class="muted" style="margin-bottom:0">
+        停售系统读取文件：<code>{{ manifest_path }}</code><br>
+        HTTP 入口：<code>/stop-sale/manifest.json</code>（与落盘文件同版）
+      </p>
+    </section>
+  </div>
+
+  <section class="card">
+    <h2>采集运行历史（最新在前）</h2>
+    <table>
+      <thead>
+        <tr><th>#</th><th>状态</th><th>源版本</th><th>分页/附件/批号</th><th>开始</th><th>结束</th><th>原因</th></tr>
+      </thead>
+      <tbody id="runs-tbody">
+        <tr><td colspan="7" class="muted">暂无运行记录</td></tr>
+      </tbody>
+    </table>
+  </section>
+</main>
+
+<script>
+let currentRunId = null;
+
+function fmt(v) { return v == null ? '—' : v; }
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c =>
+    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function statusBadge(s) {
+  const map = {success:'成功', failed:'失败', cancelled:'已取消', stale:'旧版本拒绝', running:'采集中'};
+  return `<span class="badge ${esc(s)}">${map[s] || esc(s)}</span>`;
+}
+function showMsg(kind, text) {
+  document.getElementById('action-msg').innerHTML =
+    text ? `<div class="alert ${kind}">${esc(text)}</div>` : '';
+}
+
+async function startCollect() {
+  showMsg('warn', '正在发起采集……');
+  const res = await fetch('/api/collect', {method: 'POST'});
+  const body = await res.json();
+  if (!res.ok) { showMsg('error', body.detail || '发起失败'); return; }
+  currentRunId = body.run_id;
+  showMsg('ok', `采集 #${body.run_id} 已启动`);
+  await refresh();
+}
+
+async function cancelCollect() {
+  if (!currentRunId) return;
+  const res = await fetch(`/api/runs/${currentRunId}/cancel`, {method: 'POST'});
+  const body = await res.json();
+  if (!res.ok) { showMsg('error', body.detail || '取消失败'); return; }
+  showMsg('warn', `已请求取消采集 #${currentRunId}，正式清单保持不变`);
+  await refresh();
+}
+
+async function refresh() {
+  const [runsRes, manRes] = await Promise.all([
+    fetch('/api/runs?limit=15'), fetch('/api/manifest')
+  ]);
+  const runs = await runsRes.json();
+  const manifest = await manRes.json();
+
+  const running = runs.find(r => r.running);
+  currentRunId = running ? running.id : (runs[0] && runs[0].status === 'running' ? runs[0].id : currentRunId);
+  document.getElementById('btn-collect').disabled = !!running;
+  document.getElementById('btn-cancel').disabled = !running;
+  document.getElementById('run-hint').innerHTML = running
+    ? `<span class="spinner"></span> 正在采集 #${running.id} …` : '';
+
+  const tbody = document.getElementById('runs-tbody');
+  if (!runs.length) {
+    tbody.innerHTML = '<tr><td colspan="7" class="muted">暂无运行记录</td></tr>';
+  } else {
+    tbody.innerHTML = runs.map(r => {
+      const reason = r.status === 'success'
+        ? '<span class="muted">—</span>'
+        : `<div>${esc(r.reason_text || r.reason_code || '')}</div>
+           ${r.reason_message ? `<div class="muted">${esc(r.reason_message)}</div>` : ''}`;
+      return `<tr>
+        <td>#${r.id}</td>
+        <td>${statusBadge(r.status)}${r.running ? ' <span class="spinner"></span>' : ''}</td>
+        <td>${r.source_version ? 'v' + r.source_version : '—'}</td>
+        <td>${r.pages_read} / ${r.attachments_read} / ${r.batches_collected}</td>
+        <td class="muted">${esc(fmt(r.started_at))}</td>
+        <td class="muted">${esc(fmt(r.finished_at))}</td>
+        <td>${reason}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  const meta = manifest.meta;
+  const box = document.getElementById('meta-box');
+  if (!meta) {
+    box.innerHTML = '<dt>发布状态</dt><dd><span class="muted">尚未成功采集，停售系统暂无拦截批号</span></dd>';
+  } else {
+    box.innerHTML = `
+      <dt>发布状态</dt><dd><span class="badge success">已发布</span></dd>
+      <dt>来源目录版本</dt><dd>v${esc(meta.source_version)}</dd>
+      <dt>发布运行</dt><dd>#${esc(meta.published_run_id)}</dd>
+      <dt>发布时间</dt><dd>${esc(meta.published_at)}</dd>
+      <dt>拦截批号数</dt><dd><strong>${esc(meta.entry_count)}</strong>（按产品编码 + 批号汇总）</dd>`;
+  }
+}
+refresh();
+setInterval(refresh, 2000);
+</script>
+</body>
+</html>

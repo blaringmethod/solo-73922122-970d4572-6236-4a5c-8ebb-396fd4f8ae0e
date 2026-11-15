@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>当前拦截清单</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<header>
+  <h1>当前拦截清单（按产品编码 / 批号汇总）</h1>
+  <nav>
+    <a href="/">操作面板</a>
+    <a href="/manifest">当前拦截清单</a>
+    <a href="/stop-sale/manifest.json" target="_blank">停售 JSON</a>
+    <a href="javascript:location.reload()">刷新</a>
+  </nav>
+</header>
+<main>
+  <section class="card">
+    <div class="toolbar">
+      <label>产品编码过滤：<input id="filter" type="text" placeholder="如 SP-YS-210" oninput="render()"></label>
+      <span id="summary" class="muted"></span>
+      <span style="flex:1"></span>
+      <a href="/stop-sale/manifest.json" target="_blank"><button class="ghost" type="button">查看同版 JSON</button></a>
+    </div>
+    <table>
+      <thead>
+        <tr><th>产品编码</th><th>产品名称</th><th>批号</th><th>生产日期</th><th>召回原因</th><th>来源公告</th></tr>
+      </thead>
+      <tbody id="entries-tbody"></tbody>
+    </table>
+  </section>
+
+  <section class="card">
+    <h2>来源公告（最近发布版本快照，含已撤回）</h2>
+    <table>
+      <thead><tr><th>公告号</th><th>标题</th><th>状态</th><th>发布时间</th><th>撤回原因</th></tr></thead>
+      <tbody id="ann-tbody"></tbody>
+    </table>
+    <p class="muted" style="margin-top:10px">
+      已撤回公告的批号不再参与拦截；但若某批号仍被其他<strong>有效</strong>公告覆盖，拦截不会解除。
+    </p>
+  </section>
+</main>
+
+<script>
+let entries = [], announcements = [], meta = null;
+
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c =>
+    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+async function load() {
+  const [man, ann] = await Promise.all([
+    fetch('/api/manifest').then(r => r.json()),
+    fetch('/api/announcements').then(r => r.json())
+  ]);
+  entries = man.entries; meta = man.meta; announcements = ann;
+  document.getElementById('summary').textContent = meta
+    ? `已发布 v${meta.source_version} · 运行 #${meta.published_run_id} · ${meta.entry_count} 个拦截批号`
+    : '尚未发布任何清单';
+  render();
+  renderAnnouncements();
+}
+
+function render() {
+  const q = document.getElementById('filter').value.trim().toLowerCase();
+  const rows = entries.filter(e => !q || e.product_code.toLowerCase().includes(q));
+  const tbody = document.getElementById('entries-tbody');
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="6" class="muted">没有匹配的拦截批号</td></tr>';
+    return;
+  }
+  let lastCode = null;
+  tbody.innerHTML = rows.map(e => {
+    const codeCell = e.product_code === lastCode ? '' : `<strong>${esc(e.product_code)}</strong>`;
+    const nameCell = e.product_code === lastCode ? '' : esc(e.product_name);
+    lastCode = e.product_code;
+    const sources = (e.source_ann_ids || []).map(id =>
+      `<a href="/api/announcements/${encodeURIComponent(id)}" target="_blank">
+         <span class="badge on">${esc(id)}</span></a>`).join(' ');
+    return `<tr>
+      <td>${codeCell}</td><td>${nameCell}</td>
+      <td><code>${esc(e.batch_no)}</code></td>
+      <td>${esc(e.produced_at || '—')}</td>
+      <td>${esc(e.reason || '—')}</td>
+      <td class="sources">${sources}</td>
+    </tr>`;
+  }).join('');
+}
+
+function renderAnnouncements() {
+  const tbody = document.getElementById('ann-tbody');
+  if (!announcements.length) {
+    tbody.innerHTML = '<tr><td colspan="5" class="muted">暂无公告快照</td></tr>';
+    return;
+  }
+  tbody.innerHTML = announcements.map(a => `
+    <tr>
+      <td><code>${esc(a.announcement_id)}</code></td>
+      <td>${esc(a.title)}</td>
+      <td>${a.withdrawn
+        ? '<span class="badge off">已撤回</span>'
+        : '<span class="badge on">有效</span>'}</td>
+      <td class="muted">${esc(a.published_at || '—')}</td>
+      <td class="muted">${esc(a.withdraw_reason || '—')}</td>
+    </tr>`).join('');
+}
+load();
+setInterval(load, 5000);
+</script>
+</body>
+</html>

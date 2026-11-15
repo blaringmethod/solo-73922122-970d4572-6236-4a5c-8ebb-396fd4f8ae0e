@@ -1,0 +1,15 @@
+{
+  "page": 2,
+  "total_pages": 2,
+  "next_page": null,
+  "announcements": [
+    {
+      "announcement_id": "R003",
+      "title": "召回公示：气泡水 包装密封性缺陷",
+      "published_at": "2026-11-06T08:00:00Z",
+      "detail_url": "/feed/announcements/R003",
+      "attachment_url": "/feed/attachments/R003_batches.csv",
+      "withdrawn": false
+    }
+  ]
+}

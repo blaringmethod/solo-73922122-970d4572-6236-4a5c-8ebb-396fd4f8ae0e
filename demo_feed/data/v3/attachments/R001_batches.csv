@@ -1,0 +1,4 @@
+product_code,product_name,batch_no,produced_at,reason
+SP-NY-001,鲜牛乳 950ml,B20261020A,2026-10-20,菌落总数超标
+SP-NY-001,鲜牛乳 950ml,B20261021A,2026-10-21,菌落总数超标
+SP-NY-002,低脂牛乳 500ml,B20261022C,2026-10-22,包装封口异常
